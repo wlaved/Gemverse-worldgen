@@ -56,13 +56,13 @@
                              <div>
                                 <label for="worldTypeSelect" class="block text-sm font-medium text-gray-300 mb-1">Dominant Biome</label>
                                 <select id="worldTypeSelect" class="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2 text-white focus:ring-2 focus:ring-indigo-500 outline-none">
-                                    <option>Any</option>
-                                    <option>Terra</option>
-                                    <option>Volcanic</option>
-                                    <option>Tropical</option>
-                                    <option>Floating Islands</option>
-                                    <option>Alien</option>
-                                    <option>Hollow</option>
+                                    <option value="Any">Any</option>
+                                    <option value="Terra">Terra</option>
+                                    <option value="Volcanic">Volcanic</option>
+                                    <option value="Tropical">Tropical</option>
+                                    <option value="Sky">Floating Islands</option>
+                                    <option value="Alien">Alien</option>
+                                    <option value="Hollow">Hollow</option>
                                 </select>
                              </div>
                               <div>
@@ -131,6 +131,7 @@
 
         const CHUNK_SIZE = 32; 
         const VIEW_DISTANCE = 1;
+        const GRAVITY_DEAD_ZONE_HALF_SIZE = 4.5;
         
         const BLOCK = { 
             AIR: 0, STONE: 1, DIRT: 2, GRASS: 3, SAND: 4, WATER: 5, 
@@ -322,9 +323,9 @@
                         let isSurface = false;
                         let isInnerSurface = false;
                         const myDist = Math.sqrt(globalX*globalX + globalY*globalY + globalZ*globalZ);
+                        let surfaceNormal = null;
 
                         if (get(x,y,z) !== BLOCK.AIR && get(x,y,z) !== BLOCK.WATER && get(x,y,z) !== BLOCK.LAVA) {
-                            let surfaceNormal = null;
                             for(const face of facePositions) {
                                 if (get(x + face.dir[0], y + face.dir[1], z + face.dir[2]) === BLOCK.AIR) {
                                     isSurface = true;
@@ -339,58 +340,64 @@
                                 }
                             }
 
-                             if (isSurface && !isInnerSurface) {
-                                const block = get(x,y,z);
-                                if ((block === BLOCK.STONE || block === BLOCK.DIRT)) {
-                                    if (biomes.has('TERRA') || biomes.has('ALIEN') || biomes.has('SKY')) {
-                                        set(x, y, z, BLOCK.GRASS);
-                                    } else if (biomes.has('VOLCANIC') || biomes.has('HOLLOW')) {
-                                        set(x, y, z, BLOCK.OBSIDIAN);
-                                    } else if (biomes.has('TROPICAL')) {
-                                        set(x, y, z, BLOCK.SAND);
+                             if (isSurface) {
+                                if (isInnerSurface && biomes.has('HOLLOW')) {
+                                    if (get(x,y,z) === BLOCK.STONE && Math.random() < 0.05) {
+                                        set(x,y,z, BLOCK.GEM_ORE);
                                     }
-                                }
-
-                                if(get(x,y,z) === BLOCK.GRASS) {
-                                     if(worldParams.treeChance && noise.feature(globalX / 10, globalZ / 10) > 0.7) {
-                                         const height = 4 + Math.floor(noise.rand() * 3);
-                                         for(let i=1; i <= height; i++) set(x + surfaceNormal[0]*i, y + surfaceNormal[1]*i, z + surfaceNormal[2]*i, BLOCK.WOOD);
-                                         const radius = 2;
-                                         const topX = x + surfaceNormal[0]*height;
-                                         const topY = y + surfaceNormal[1]*height;
-                                         const topZ = z + surfaceNormal[2]*height;
-
-                                         for(let ly = -radius; ly <= radius; ly++) {
-                                             for(let lx = -radius; lx <= radius; lx++) {
-                                                 for(let lz = -radius; lz <= radius; lz++) {
-                                                     if(Math.sqrt(lx*lx + ly*ly + lz*lz) <= radius && get(topX+lx, topY+ly, topZ+lz) === BLOCK.AIR) {
-                                                         set(topX+lx, topY+ly, topZ+lz, BLOCK.LEAVES);
-                                                     }
-                                                 }
-                                             }
-                                         }
-                                     }
-                                }
+                                } else {
+                                    const block = get(x,y,z);
+                                    if ((block === BLOCK.STONE || block === BLOCK.DIRT)) {
+                                        if (biomes.has('TERRA') || biomes.has('ALIEN') || biomes.has('SKY')) {
+                                            set(x, y, z, BLOCK.GRASS);
+                                        } else if (biomes.has('VOLCANIC') || biomes.has('HOLLOW')) {
+                                            set(x, y, z, BLOCK.OBSIDIAN);
+                                        } else if (biomes.has('TROPICAL')) {
+                                            set(x, y, z, BLOCK.SAND);
+                                        }
+                                    }
                                 
-                                if (get(x,y,z) === BLOCK.STONE || get(x,y,z) === BLOCK.BASALT) {
-                                     if (biomes.has('ALIEN') && noise.feature(globalX/8, globalZ/8) > 0.6) {
-                                         const h = 3 + Math.floor(noise.rand() * 4);
-                                         for(let i=1; i<=h; i++) set(x+surfaceNormal[0]*i, y+surfaceNormal[1]*i, z+surfaceNormal[2]*i, BLOCK.MUSHROOM_STEM);
-                                         const radius = 1 + Math.floor(noise.rand() * 2);
-                                         const topX = x + surfaceNormal[0]*h;
-                                         const topY = y + surfaceNormal[1]*h;
-                                         const topZ = z + surfaceNormal[2]*h;
-                                         
-                                         for(let ly = -radius; ly <= radius; ly++) {
-                                            for(let lx = -radius; lx <= radius; lx++) {
-                                                for(let lz = -radius; lz <= radius; lz++) {
-                                                     if(Math.sqrt(lx*lx+ly*ly+lz*lz) <= radius) {
-                                                        set(topX+lx, topY+ly, topZ+lz, BLOCK.MUSHROOM_GLOW);
+                                    if (get(x, y, z) === BLOCK.GRASS) {
+                                        if (worldParams.treeChance && noise.feature(globalX / 10, globalZ / 10) > 0.7) {
+                                            const height = 4 + Math.floor(noise.rand() * 3);
+                                            for(let i=1; i <= height; i++) set(x + surfaceNormal[0]*i, y + surfaceNormal[1]*i, z + surfaceNormal[2]*i, BLOCK.WOOD);
+                                            const radius = 2;
+                                            const topX = x + surfaceNormal[0]*height;
+                                            const topY = y + surfaceNormal[1]*height;
+                                            const topZ = z + surfaceNormal[2]*height;
+
+                                            for(let ly = -radius; ly <= radius; ly++) {
+                                                for(let lx = -radius; lx <= radius; lx++) {
+                                                    for(let lz = -radius; lz <= radius; lz++) {
+                                                        if(Math.sqrt(lx*lx + ly*ly + lz*lz) <= radius) {
+                                                            set(topX+lx, topY+ly, topZ+lz, BLOCK.LEAVES);
+                                                        }
                                                     }
                                                 }
                                             }
-                                         }
-                                     }
+                                        }
+                                    }
+                                    
+                                    if (get(x,y,z) === BLOCK.STONE || get(x,y,z) === BLOCK.BASALT) {
+                                        if (biomes.has('ALIEN') && noise.feature(globalX/8, globalZ/8) > 0.6) {
+                                            const h = 3 + Math.floor(noise.rand() * 4);
+                                            for(let i=1; i<=h; i++) set(x+surfaceNormal[0]*i, y+surfaceNormal[1]*i, z+surfaceNormal[2]*i, BLOCK.MUSHROOM_STEM);
+                                            const radius = 1 + Math.floor(noise.rand() * 2);
+                                            const topX = x + surfaceNormal[0]*h;
+                                            const topY = y + surfaceNormal[1]*h;
+                                            const topZ = z + surfaceNormal[2]*h;
+                                            
+                                            for(let ly = -radius; ly <= radius; ly++) {
+                                                for(let lx = -radius; lx <= radius; lx++) {
+                                                    for(let lz = -radius; lz <= radius; lz++) {
+                                                        if(Math.sqrt(lx*lx+ly*ly+lz*lz) <= radius) {
+                                                            set(topX+lx, topY+ly, topZ+lz, BLOCK.MUSHROOM_GLOW);
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -583,18 +590,25 @@
             const gravityForce = new CANNON.Vec3(0,0,0);
             const targetUp = new THREE.Vector3(0,1,0);
         
-            if (absY >= absX && absY >= absZ) {
-                if(!isFlying) gravityForce.y = -Math.sign(pos.y) * 20 * playerBody.mass;
-                targetUp.set(0, Math.sign(pos.y), 0);
-            } else if (absX >= absY && absX >= absZ) {
-                if(!isFlying) gravityForce.x = -Math.sign(pos.x) * 20 * playerBody.mass;
-                targetUp.set(Math.sign(pos.x), 0, 0);
-            } else {
-                if(!isFlying) gravityForce.z = -Math.sign(pos.z) * 20 * playerBody.mass;
-                targetUp.set(0, 0, Math.sign(pos.z));
+            const inDeadZone = absX < GRAVITY_DEAD_ZONE_HALF_SIZE && absY < GRAVITY_DEAD_ZONE_HALF_SIZE && absZ < GRAVITY_DEAD_ZONE_HALF_SIZE;
+
+            if (!inDeadZone) {
+                if (absY >= absX && absY >= absZ) {
+                    if(!isFlying) gravityForce.y = -Math.sign(pos.y) * 20 * playerBody.mass;
+                    targetUp.set(0, Math.sign(pos.y), 0);
+                } else if (absX >= absY && absX >= absZ) {
+                    if(!isFlying) gravityForce.x = -Math.sign(pos.x) * 20 * playerBody.mass;
+                    targetUp.set(Math.sign(pos.x), 0, 0);
+                } else {
+                    if(!isFlying) gravityForce.z = -Math.sign(pos.z) * 20 * playerBody.mass;
+                    targetUp.set(0, 0, Math.sign(pos.z));
+                }
+                currentUp.lerp(targetUp, 0.1).normalize();
             }
-            playerBody.applyForce(gravityForce, playerBody.position);
-            currentUp.lerp(targetUp, 0.1).normalize();
+
+            if (!isFlying) {
+                playerBody.applyForce(gravityForce, playerBody.position);
+            }
             
             cannonWorld.step(1/60, delta, 5);
             handleKeyboardLook(delta);
@@ -607,16 +621,18 @@
 
         function generateWorldMaterials(colors) {
             const mats = {};
-            for (const block in colors) {
-                const color = colors[block];
+            for (const blockId in colors) {
+                const color = colors[blockId];
                 const params = { color };
-                if (block === 'WATER' || block === 'LEAVES') {
+                const id = Number(blockId);
+
+                if (id === BLOCK.WATER || id === BLOCK.LEAVES) {
                     params.transparent = true;
-                    params.opacity = block === 'LEAVES' ? 0.8 : 0.6;
-                } else if (block.includes('LAVA') || block.includes('GLOW') || block.includes('GEM')) {
+                    params.opacity = id === BLOCK.LEAVES ? 0.8 : 0.6;
+                } else if (id === BLOCK.LAVA || id === BLOCK.MUSHROOM_GLOW || id === BLOCK.GEM_ORE) {
                     params.emissive = new THREE.Color(color).multiplyScalar(1.2);
                 }
-                mats[BLOCK[block]] = new THREE.MeshLambertMaterial(params);
+                mats[id] = new THREE.MeshLambertMaterial(params);
             }
             return mats;
         }
@@ -626,6 +642,7 @@
             const colors = {};
             const biomes = new Set();
 
+            const typeKey = overrides.worldType && overrides.worldType !== 'Any' ? overrides.worldType : null;
             let worldSizeName = overrides.worldSize && overrides.worldSize !== 'Any' ? overrides.worldSize : null;
             let worldBounds;
 
@@ -649,9 +666,8 @@
                 Alien: rand(), Hollow: rand(), Terra: rand(),
             };
 
-            if (overrides.worldType && overrides.worldType !== 'Any') {
-                const key = overrides.worldType.replace(' ', '');
-                if(biomeScores[key]) biomeScores[key] = 1.1; // Force dominant
+            if (typeKey && biomeScores[typeKey]) {
+                biomeScores[typeKey] = 1.1; // Force dominant
             }
             
             if (worldSizeName === 'Colossal') {
@@ -679,39 +695,39 @@
             switch(dominantBiome) {
                 case 'Volcanic':
                     params = { densityScale: 40, densityThreshold: 0.1, liquidCoreSize: worldBounds * 0.25 };
-                    colors.BASALT = new THREE.Color().setHSL(rand(), 0.2, 0.1 + rand() * 0.2);
-                    colors.OBSIDIAN = new THREE.Color().setHSL(rand(), 0.1, 0.05 + rand() * 0.15);
-                    colors.LAVA = new THREE.Color().setHSL(0.05 + rand()*0.05, 1, 0.6);
+                    colors[BLOCK.BASALT] = new THREE.Color().setHSL(rand(), 0.2, 0.1 + rand() * 0.2);
+                    colors[BLOCK.OBSIDIAN] = new THREE.Color().setHSL(rand(), 0.1, 0.05 + rand() * 0.15);
+                    colors[BLOCK.LAVA] = new THREE.Color().setHSL(0.05 + rand()*0.05, 1, 0.6);
                     break;
                 case 'Tropical':
                     params = { densityScale: 35, densityThreshold: 0.15, liquidCoreSize: worldBounds * 0.4, treeChance: 0.005 };
-                    colors.GRASS = new THREE.Color().setHSL(0.25 + rand()*0.15, 0.8, 0.5 + rand()*0.1);
-                    colors.SAND = new THREE.Color().setHSL(0.15, 0.9, 0.7 + rand()*0.1);
-                    colors.WATER = new THREE.Color().setHSL(0.55 + rand()*0.1, 0.9, 0.5);
+                    colors[BLOCK.GRASS] = new THREE.Color().setHSL(0.25 + rand()*0.15, 0.8, 0.5 + rand()*0.1);
+                    colors[BLOCK.SAND] = new THREE.Color().setHSL(0.15, 0.9, 0.7 + rand()*0.1);
+                    colors[BLOCK.WATER] = new THREE.Color().setHSL(0.55 + rand()*0.1, 0.9, 0.5);
                     break;
                 case 'Sky':
                     params = { densityScale: 45, densityThreshold: 0.25, liquidCoreSize: 0, hasFloatingIslands: true, treeChance: 0.01 };
-                    colors.STONE = new THREE.Color().setHSL(rand(), 0.2, 0.6 + rand()*0.1);
-                    colors.GRASS = new THREE.Color().setHSL(0.3 + rand()*0.2, 0.8, 0.6);
-                    colors.DIRT = new THREE.Color(0x9b7653).lerp(colors.STONE, 0.4);
+                    colors[BLOCK.STONE] = new THREE.Color().setHSL(rand(), 0.2, 0.6 + rand()*0.1);
+                    colors[BLOCK.GRASS] = new THREE.Color().setHSL(0.3 + rand()*0.2, 0.8, 0.6);
+                    colors[BLOCK.DIRT] = new THREE.Color(0x9b7653).lerp(colors[BLOCK.STONE], 0.4);
                     break;
                 case 'Alien':
                     params = { densityScale: 35, densityThreshold: 0.3, liquidCoreSize: 0 };
-                    colors.STONE = new THREE.Color().setHSL(0.7 + rand()*0.3, 0.4, 0.3);
-                    colors.MUSHROOM_STEM = new THREE.Color().setHSL(rand(), 0.2, 0.9);
-                    colors.MUSHROOM_GLOW = new THREE.Color().setHSL(rand(), 1, 0.7);
+                    colors[BLOCK.STONE] = new THREE.Color().setHSL(0.7 + rand()*0.3, 0.4, 0.3);
+                    colors[BLOCK.MUSHROOM_STEM] = new THREE.Color().setHSL(rand(), 0.2, 0.9);
+                    colors[BLOCK.MUSHROOM_GLOW] = new THREE.Color().setHSL(rand(), 1, 0.7);
                     break;
                 case 'Hollow':
                     params = { densityScale: 60, densityThreshold: 0.1, liquidCoreSize: 0, hollowRadius: worldBounds * 0.8 };
-                    colors.OBSIDIAN = new THREE.Color().setHSL(rand(), 0.3, 0.15);
-                    colors.STONE = new THREE.Color().setHSL(rand(), 0.2, 0.5);
+                    colors[BLOCK.OBSIDIAN] = new THREE.Color().setHSL(rand(), 0.3, 0.15);
+                    colors[BLOCK.STONE] = new THREE.Color().setHSL(rand(), 0.2, 0.5);
                     break;
                 default:
                     dominantBiome = 'Terra';
                     params = { densityScale: 50, densityThreshold: 0.1, liquidCoreSize: 0, hasFloatingIslands: rand() > 0.7, treeChance: 0.01 };
-                    colors.STONE = new THREE.Color().setHSL(0.1, 0.1, 0.4 + rand()*0.2);
-                    colors.DIRT = new THREE.Color(0x9b7653).lerp(colors.STONE, 0.6);
-                    colors.GRASS = new THREE.Color().setHSL(0.3, 0.7, 0.5 + rand()*0.1);
+                    colors[BLOCK.STONE] = new THREE.Color().setHSL(0.1, 0.1, 0.4 + rand()*0.2);
+                    colors[BLOCK.DIRT] = new THREE.Color(0x9b7653).lerp(colors[BLOCK.STONE], 0.6);
+                    colors[BLOCK.GRASS] = new THREE.Color().setHSL(0.3, 0.7, 0.5 + rand()*0.1);
                     break;
             }
 
@@ -725,16 +741,16 @@
                 typeName += ` with ${additions.join(', ')}`;
             }
             
-            if (!colors.STONE) colors.STONE = new THREE.Color(0x808080);
-            if (!colors.DIRT) colors.DIRT = new THREE.Color(0x9b7653);
-            if (!colors.GRASS) colors.GRASS = new THREE.Color(0x22c55e);
-            if (!colors.SAND) colors.SAND = new THREE.Color(0xfde047);
-            if (!colors.WATER) colors.WATER = new THREE.Color(0x3b82f6);
-            if (!colors.OBSIDIAN) colors.OBSIDIAN = new THREE.Color(0x1e1b26);
-            colors.WOOD = new THREE.Color().setHSL(0.08 + rand() * 0.04, 0.5, 0.3 + rand() * 0.2);
-            colors.LEAVES = new THREE.Color().setHSL(biomes.has('ALIEN') ? rand() : 0.3 + rand()*0.1, 0.8, 0.5 + rand()*0.2);
-            colors.GOLD_ORE = new THREE.Color(0xfacc15);
-            colors.GEM_ORE = new THREE.Color(0x22d3ee);
+            if (!colors[BLOCK.STONE]) colors[BLOCK.STONE] = new THREE.Color(0x808080);
+            if (!colors[BLOCK.DIRT]) colors[BLOCK.DIRT] = new THREE.Color(0x9b7653);
+            if (!colors[BLOCK.GRASS]) colors[BLOCK.GRASS] = new THREE.Color(0x22c55e);
+            if (!colors[BLOCK.SAND]) colors[BLOCK.SAND] = new THREE.Color(0xfde047);
+            if (!colors[BLOCK.WATER]) colors[BLOCK.WATER] = new THREE.Color(0x3b82f6);
+            if (!colors[BLOCK.OBSIDIAN]) colors[BLOCK.OBSIDIAN] = new THREE.Color(0x1e1b26);
+            colors[BLOCK.WOOD] = new THREE.Color().setHSL(0.08 + rand() * 0.04, 0.5, 0.3 + rand() * 0.2);
+            colors[BLOCK.LEAVES] = new THREE.Color().setHSL(biomes.has('ALIEN') ? rand() : 0.3 + rand()*0.1, 0.8, 0.5 + rand()*0.2);
+            colors[BLOCK.GOLD_ORE] = new THREE.Color(0xfacc15);
+            colors[BLOCK.GEM_ORE] = new THREE.Color(0x22d3ee);
 
             return { ...params, typeName, worldSizeName, worldBounds, colors, biomes };
         }
@@ -818,4 +834,5 @@
     </script>
 </body>
 </html>
+
 
