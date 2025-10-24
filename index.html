@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Gemverse 3D World Generator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- ES Module Shims for import maps -->
+    <script async src="https://unpkg.com/es-module-shims@1.6.3/dist/es-module-shims.js"></script>
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@0.157.0/build/three.module.js",
+            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.157.0/examples/jsm/"
+        }
+    }
+    </script>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body class="p-4 md:p-8 flex flex-col h-screen">
+
+    <header class="text-center mb-4 flex-shrink-0">
+        <h1 class="text-3xl md:text-4xl font-bold text-white">Gemverse 3D World Generator</h1>
+        <p class="mt-1 text-md text-gray-400">Infinite Blocks, Rarity & Planetary Gravity</p>
+    </header>
+
+    <main class="flex flex-col lg:flex-row gap-4 flex-grow overflow-hidden">
+        <div class="lg:w-1/4 w-full flex-shrink-0 card p-4 h-full overflow-y-auto">
+            <div class="space-y-4">
+                <div>
+                    <label for="seedInput" class="block text-sm font-medium text-gray-300 mb-1">World Name / Seed</label>
+                    <div class="flex gap-2">
+                        <input type="text" id="seedInput" class="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-1 text-white focus:ring-2 focus:ring-indigo-500 outline-none transition text-sm" placeholder="e.g., Olympus">
+                        <button id="generateButton" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-1 px-3 rounded-lg transition-colors duration-200 text-sm">Generate</button>
+                    </div>
+                </div>
+
+                <div class="pt-2 border-t border-gray-700">
+                    <button id="toggleCustomButton" class="w-full text-left font-medium text-white mb-2 text-sm">Customize World ▼</button>
+                    <div id="customOptions" class="space-y-3 hidden">
+                         <div>
+                            <label for="worldTypeSelect" class="block text-xs font-medium text-gray-300 mb-1">Dominant Biome</label>
+                            <select id="worldTypeSelect" class="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-1 text-white focus:ring-2 focus:ring-indigo-500 outline-none text-sm">
+                                <option value="Any">Any</option>
+                                <option value="Terra">Terra</option>
+                                <option value="Volcanic">Volcanic</option>
+                                <option value="Tropical">Tropical</option>
+                                <option value="Sky">Floating Islands</option>
+                                <option value="Alien">Alien</option>
+                                <option value="Hollow">Hollow</option>
+                            </select>
+                         </div>
+                          <div>
+                            <label for="worldSizeSelect" class="block text-xs font-medium text-gray-300 mb-1">World Size</label>
+                            <select id="worldSizeSelect" class="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-1 text-white focus:ring-2 focus:ring-indigo-500 outline-none text-sm">
+                                <option>Any</option>
+                                <option>Small</option>
+                                <option>Medium</option>
+                                <option>Large</option>
+                                <option>Colossal</option>
+                            </select>
+                         </div>
+                    </div>
+                </div>
+
+                <div id="worldInfo" class="space-y-3 pt-2 border-t border-gray-700"></div>
+                 <div id="gpuStatus" class="text-xs text-gray-500 pt-2 border-t border-gray-700">Checking GPU support...</div>
+            </div>
+        </div>
+        <div id="canvas-container" class="lg:w-3/4 w-full card p-1 flex items-center justify-center relative flex-grow">
+             <div id="loader" class="loader absolute z-10"></div>
+             <div id="controls-overlay" class="z-20 visible">
+                <h3 class="text-2xl font-bold mb-2">Planetary Gravity Explorer</h3>
+                <p id="desktop-instructions">Gravity pulls you to the center of the world! Walk over edges to shift orientation.<br>Click/Drag or <kbd>←</kbd><kbd>↑</kbd><kbd>→</kbd><kbd>↓</kbd> to look. <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> to move. <br> <kbd>F</kbd> to Fly. <kbd>Space</kbd> to Jump/Ascend. <kbd>Shift</keybd> to Phase Through Center.</p>
+                <p id="mobile-instructions" style="display: none;">Drag screen to look. Use joystick to move. Tap right-side to jump.</p>
+             </div>
+             <canvas id="worldCanvas"></canvas>
+             <div id="joystick-container">
+                <div id="joystick-base"></div>
+                <div id="joystick-stick"></div>
+             </div>
+        </div>
+    </main>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cannon.js/0.6.2/cannon.min.js"></script>
+    <script type="module" src="main.js"></script>
+</body>
+</html>
