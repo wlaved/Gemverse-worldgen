@@ -1,0 +1,1353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Gemverse 3D World Generator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- ES Module Shims for import maps -->
+    <script async src="https://unpkg.com/es-module-shims@1.6.3/dist/es-module-shims.js"></script>
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@0.157.0/build/three.module.js",
+            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.157.0/examples/jsm/"
+        }
+    }
+    </script>
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #111827; color: #d1d5db; touch-action: none; overflow: hidden; height: 100vh; margin: 0;} /* Full height */
+        .card { background-color: #1f2937; border: 1px solid #374151; border-radius: 0.75rem; }
+        .loader { border: 4px solid #374151; border-top: 4px solid #4f46e5; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; }
+        #worldCanvas { cursor: grab; width: 100%; height: 100%; display: block; }
+        #controls-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.7); color: white; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; padding: 1rem; border-radius: 0.5rem; pointer-events: none; opacity: 0; transition: opacity 0.3s; z-index: 10; }
+        #controls-overlay.visible { pointer-events: auto; opacity: 1; }
+        #controls-overlay p { margin-bottom: 0.5rem; }
+        #controls-overlay kbd { background-color: #374151; border-radius: 0.25rem; padding: 0.2rem 0.5rem; font-family: monospace; border: 1px solid #4b5563; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        #joystick-container { position: absolute; bottom: 20px; left: 20px; width: 120px; height: 120px; display: none; z-index: 10; }
+        #joystick-base { position: absolute; width: 100%; height: 100%; background: rgba(55, 65, 81, 0.5); border-radius: 50%; }
+        #joystick-stick { position: absolute; top: 30px; left: 30px; width: 60px; height: 60px; background: rgba(107, 114, 128, 0.8); border-radius: 50%; }
+        /* Ensure main takes remaining height */
+        main { height: calc(100% - 6rem); } /* Adjust based on header height */
+        #canvas-container { height: 100%; } /* Canvas container fills main right side */
+    </style>
+</head>
+<body class="p-4 md:p-8 flex flex-col h-screen">
+
+    <header class="text-center mb-4 flex-shrink-0">
+        <h1 class="text-3xl md:text-4xl font-bold text-white">Gemverse 3D World Generator</h1>
+        <p class="mt-1 text-md text-gray-400">Infinite Blocks, Rarity & Planetary Gravity</p>
+    </header>
+
+    <main class="flex flex-col lg:flex-row gap-4 flex-grow overflow-hidden">
+        <div class="lg:w-1/4 w-full flex-shrink-0 card p-4 h-full overflow-y-auto">
+            <div class="space-y-4">
+                <div>
+                    <label for="seedInput" class="block text-sm font-medium text-gray-300 mb-1">World Name / Seed</label>
+                    <div class="flex gap-2">
+                        <input type="text" id="seedInput" class="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-1 text-white focus:ring-2 focus:ring-indigo-500 outline-none transition text-sm" placeholder="e.g., Olympus">
+                        <button id="generateButton" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-1 px-3 rounded-lg transition-colors duration-200 text-sm">Generate</button>
+                    </div>
+                </div>
+
+                <div class="pt-2 border-t border-gray-700">
+                    <button id="toggleCustomButton" class="w-full text-left font-medium text-white mb-2 text-sm">Customize World ▼</button>
+                    <div id="customOptions" class="space-y-3 hidden">
+                         <div>
+                            <label for="worldTypeSelect" class="block text-xs font-medium text-gray-300 mb-1">Dominant Biome</label>
+                            <select id="worldTypeSelect" class="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-1 text-white focus:ring-2 focus:ring-indigo-500 outline-none text-sm">
+                                <option value="Any">Any</option>
+                                <option value="Terra">Terra</option>
+                                <option value="Volcanic">Volcanic</option>
+                                <option value="Tropical">Tropical</option>
+                                <option value="Sky">Floating Islands</option>
+                                <option value="Alien">Alien</option>
+                                <option value="Hollow">Hollow</option>
+                            </select>
+                         </div>
+                          <div>
+                            <label for="worldSizeSelect" class="block text-xs font-medium text-gray-300 mb-1">World Size</label>
+                            <select id="worldSizeSelect" class="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-1 text-white focus:ring-2 focus:ring-indigo-500 outline-none text-sm">
+                                <option>Any</option>
+                                <option>Small</option>
+                                <option>Medium</option>
+                                <option>Large</option>
+                                <option>Colossal</option>
+                            </select>
+                         </div>
+                    </div>
+                </div>
+
+                <div id="worldInfo" class="space-y-3 pt-2 border-t border-gray-700"></div>
+                 <div id="gpuStatus" class="text-xs text-gray-500 pt-2 border-t border-gray-700">Checking GPU support...</div>
+            </div>
+        </div>
+        <div id="canvas-container" class="lg:w-3/4 w-full card p-1 flex items-center justify-center relative flex-grow">
+             <div id="loader" class="loader absolute z-10"></div>
+             <div id="controls-overlay" class="z-20 visible">
+                <h3 class="text-2xl font-bold mb-2">Planetary Gravity Explorer</h3>
+                <p id="desktop-instructions">Gravity pulls you to the center of the world! Walk over edges to shift orientation.<br>Click/Drag or <kbd>←</kbd><kbd>↑</kbd><kbd>→</kbd><kbd>↓</kbd> to look. <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> to move. <br> <kbd>F</kbd> to Fly. <kbd>Space</kbd> to Jump/Ascend. <kbd>Shift</keybd> to Phase Through Center.</p>
+                <p id="mobile-instructions" style="display: none;">Drag screen to look. Use joystick to move. Tap right-side to jump.</p>
+             </div>
+             <canvas id="worldCanvas"></canvas>
+             <div id="joystick-container">
+                <div id="joystick-base"></div>
+                <div id="joystick-stick"></div>
+             </div>
+        </div>
+    </main>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cannon.js/0.6.2/cannon.min.js"></script>
+    <script type="module">
+        import * as THREE from 'three';
+        import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+        import { createNoise2D, createNoise3D } from 'https://cdn.skypack.dev/simplex-noise';
+
+        // --- DOM Elements ---
+        const seedInput = document.getElementById('seedInput');
+        const generateButton = document.getElementById('generateButton');
+        const worldInfo = document.getElementById('worldInfo');
+        const loader = document.getElementById('loader');
+        const canvasContainer = document.getElementById('canvas-container');
+        const worldCanvas = document.getElementById('worldCanvas');
+        const controlsOverlay = document.getElementById('controls-overlay');
+        const toggleCustomButton = document.getElementById('toggleCustomButton');
+        const customOptions = document.getElementById('customOptions');
+        const worldTypeSelect = document.getElementById('worldTypeSelect');
+        const worldSizeSelect = document.getElementById('worldSizeSelect');
+        const gpuStatus = document.getElementById('gpuStatus');
+
+        // --- Helper Functions (Moved to top) ---
+        function createSeedFromString(str) { let h=0; for(let i=0;i<str.length;i++)h=((h<<5)-h)+str.charCodeAt(i),h|=0; return h; }
+        function seededRandom(s) { return function() { s = Math.sin(s) * 10000; return s - Math.floor(s); } }
+        
+        // --- Constants (Moved to top) ---
+        const CHUNK_SIZE = 32;
+        const VIEW_DISTANCE = 1; // 3x3x3 chunks around player
+        const CENTER_BOX_HALF_SIZE = 10.5; // 21x21x21 box
+
+        // --- Physics Collision Groups ---
+        const GROUP_PLAYER = 1;
+        const GROUP_WALL = 2;
+        const GROUP_WORLD = 4;
+
+        // --- NEW: Infinite Block Registry ---
+        const MAX_BLOCK_ID = 0xFFF; // 12 bit
+        const ENGINE_IDS = 256;     // reserved
+        let reg = new Map();        // hash → id
+        let rev = new Array(MAX_BLOCK_ID + 1); // id → record
+        let nextID = ENGINE_IDS;
+        const CHUNK_PAD = 16; // 0..15 aux flags
+        
+        // --- Block ID constants will be set in initBlockRegistry ---
+        let BLOCK = {}; 
+
+        const facePositions = [ /* ... face data unchanged ... */
+            { dir: [ -1,  0,  0 ], corners: [ [ 0, 1, 0 ], [ 0, 0, 0 ], [ 0, 1, 1 ], [ 0, 0, 1 ] ] },
+            { dir: [  1,  0,  0 ], corners: [ [ 1, 1, 1 ], [ 1, 0, 1 ], [ 1, 1, 0 ], [ 1, 0, 0 ] ] },
+            { dir: [  0, -1,  0 ], corners: [ [ 1, 0, 1 ], [ 0, 0, 1 ], [ 1, 0, 0 ], [ 0, 0, 0 ] ] },
+            { dir: [  0,  1,  0 ], corners: [ [ 0, 1, 1 ], [ 1, 1, 1 ], [ 0, 1, 0 ], [ 1, 1, 0 ] ] },
+            { dir: [  0,  0, -1 ], corners: [ [ 1, 1, 0 ], [ 1, 0, 0 ], [ 0, 1, 0 ], [ 0, 0, 0 ] ] },
+            { dir: [  0,  0,  1 ], corners: [ [ 0, 1, 1 ], [ 0, 0, 1 ], [ 1, 1, 1 ], [ 1, 0, 1 ] ] },
+        ];
+
+
+        // --- Core Engine Vars ---
+        let scene, camera, renderer, cannonWorld, playerBody, gravityGridLines;
+        let clock = new THREE.Clock();
+        let currentSeedString = 'Arcadia';
+        let worldChunks = {};
+        let noise = {}; // CPU noise functions
+        let worldParams = {};
+        let worldMaterials = {};
+        let lastPlayerChunk = {x: null, y: null, z: null};
+        let chunkUpdateInterval = 0;
+        let overlayIsVisible = true;
+        let isFlying = false; // RE-ENABLED
+        let isWorldReady = false; 
+
+        // --- Player Control Vars ---
+        let canJump = false;
+        const movement = { x: 0, z: 0 };
+        let pitch = 0;
+        let yaw = 0;
+        let currentUp = new THREE.Vector3(0,1,0); // Player's current "up" direction
+        const targetUp = new THREE.Vector3(0,1,0); // Target "up" based on gravity
+        let isTouching = {}; // e.g., isTouching.top = true
+
+        function xxh64(a, b) { // 64-bit-ish hash (using two 32-bit ints)
+            let s = BigInt(a), t = BigInt(b), m = 0x9e3779b97f4a7c15n;
+            s ^= t; s *= m; s ^= s >> 32n; s *= m; s ^= s >> 29n;
+            return Number(s & 0xffffffffn); // Return as 32-bit number
+        }
+
+        function initBlockRegistry(seed64) {
+            reg.clear();
+            rev.fill(null);
+            BLOCK = {}; // Reset block ID enum
+            // Pre-register engine blocks (deterministic order)
+            const staples = ['AIR','STONE','DIRT','GRASS','SAND','WATER','LAVA','BASALT','OBSIDIAN','WOOD','LEAVES','GOLD_ORE','GEM_ORE','MUSHROOM_STEM','MUSHROOM_GLOW'];
+            staples.forEach((name,i)=>{
+                BLOCK[name] = i; // Assign ID to our enum
+                const rec = {
+                    name,
+                    baseH: (Math.abs(seed64+i)*17) % 360 / 360,
+                    baseS: 0.5,
+                    baseL: 0.5,
+                    emissive: (name.includes('GLOW') || name.includes('LAVA') || name.includes('GEM')) ? 1 : 0,
+                    transparent: (name.includes('WATER') || name.includes('LEAVES')) ? 1 : 0,
+                    roughness: 0.8
+                };
+                reg.set(name,i);
+                rev[i]=rec;
+            });
+            nextID = ENGINE_IDS;
+        }
+        
+        function registerBlock(hash32) {
+            let id = reg.get(hash32);
+            if(id !== undefined) return id;
+            
+            if(nextID > MAX_BLOCK_ID) {
+                id = (hash32 & 0x3FF) + ENGINE_IDS; // pseudo-random victim
+            } else {
+                id = nextID++;
+            }
+            const seed = hash32;
+            const rec = {
+                name:'block_'+id,
+                baseH: (seed*17)%360/360,
+                baseS: 0.4+(seed*19)%100/250, // 0.4 - 0.8
+                baseL: 0.3+(seed*23)%100/200, // 0.3 - 0.8
+                emissive: (seed & 0xF) < 2 ? 1:0,
+                transparent: (seed & 0xF) === 3 ? 1:0,
+                roughness: 0.2+(seed*29)%100/125 // 0.2 - 1.0
+            };
+            reg.set(hash32,id);
+            rev[id]=rec;
+            return id;
+        }
+
+        function packBlock(id,aux=0){ return (id&0xFFF)|(aux<<12); }
+        function unpackBlock(packed){ return {id:packed&0xFFF, aux:(packed>>12)&0xF}; }
+
+        // --- NEW: Depth Rarity Logic ---
+        function getDepthKm(x,y,z,bounds){ 
+          const d=Math.min(bounds-Math.abs(x), bounds-Math.abs(y), bounds-Math.abs(z));
+          return Math.max(0,d)/1000;
+        }
+        function rarityAt(depthKm,optKm,sigmaKm){ 
+          const d=(depthKm-optKm)/sigmaKm;
+          return Math.exp(-0.5*d*d);
+        }
+        function buildRarityTable(seed64,bounds){
+          const rand=(a)=>{let s=BigInt(seed64)+BigInt(a); s=(s>>16n)^(s*0x85ebca6bn); return Number(s&0xffffn)/0x10000;};
+          return {
+            optimalKm: 0.5 + rand(1)*2.5,   // 0.5–3 km
+            sigmaKm: 0.3 + rand(2)*0.4,     // 0.3–0.7 km
+            baseChance(blockHash){          // per-block 0…1
+              return 0.05 + (blockHash&0xff)/0x200; // 0.05–0.55
+            }
+          };
+        }
+        // Modified to accept a rand function for deterministic choice
+        function chooseBlockWithDepth(blockHash, depthKm, rarityTable, randFunc){
+          const base = rarityTable.baseChance(blockHash);
+          const ramp = rarityAt(depthKm, rarityTable.optimalKm, rarityTable.sigmaKm);
+          if(randFunc() < base * ramp) return registerBlock(blockHash);
+          return reg.get('STONE'); // fallback to common stone
+        }
+
+        // --- NEW: Worm Carver Logic ---
+        function carveWorms(chunkX,chunkY,chunkZ,seed){
+            const out=new Uint8Array(32*32*32).fill(0);
+            const rand=(a)=>{let s=seed+a; s=(s>>16)^(s*0x85ebca6b); return (s&0xffff)/0x10000;};
+            const worms=3+Math.floor(rand(0)*3); // 3-5 worms
+            for(let w=0;w<worms;w++){
+                let x=rand(w+1)*32|0, y=rand(w+2)*32|0, z=rand(w+3)*32|0;
+                const steps=30+rand(w+4)*30|0, rad=2.5+rand(w+5)*2; // radius 2.5-4.5
+                for(let s=0;s<steps;s++){
+                // bias horizontal
+                const dx=(rand(s+1000)-0.5)*0.8, dy=(rand(s+2000)-0.5)*0.2, dz=(rand(s+3000)-0.5)*0.8;
+                x=Math.max(0,Math.min(31,x+dx)); y=Math.max(0,Math.min(31,y+dy)); z=Math.max(0,Math.min(31,z+dz));
+                // sphere carve
+                const r2=rad*rad, r=Math.ceil(rad);
+                for(let ox=-r;ox<=r;ox++)for(let oy=-r;oy<=r;oy++)for(let oz=-r;oz<=r;oz++){
+                    const dx=ox,dy=oy,dz=oz;
+                    if(dx*dx+dy*dy+dz*dz>r2) continue;
+                    const bx=(x+dx)|0, by=(y+oy)|0, bz=(z+dz)|0;
+                    if(bx<0||bx>=32||by<0||by>=32||bz<0||bz>=32) continue;
+                    out[((by*CHUNK_SIZE)|bz)*CHUNK_SIZE|bx]=1;
+                }
+                }
+            }
+            return out;
+        }
+
+        // --- WebGPU Vars & Shaders (Simplified, path disabled) ---
+        var gpuDevice = null;
+        var gpuNoisePipeline = null;
+        let gpuErosionPipeline = null; // Declared, but not used in this version
+        const noiseWGSL = ``; // Shader code removed as it's complex and was buggy
+
+        // --- Helper Functions ---
+        // createSeedFromString and seededRandom are at the top
+
+        // --- Initialization ---
+        async function init() {
+            // Force CPU fallback
+            gpuDevice = null;
+            gpuStatus.textContent = "GPU generation disabled for stability.";
+
+            scene = new THREE.Scene();
+            scene.fog = new THREE.Fog(0x87CEEB, CHUNK_SIZE * (VIEW_DISTANCE * 2), CHUNK_SIZE * (VIEW_DISTANCE * 2 + 1));
+            camera = new THREE.PerspectiveCamera(75, canvasContainer.clientWidth / canvasContainer.clientHeight, 0.1, 1000);
+            renderer = new THREE.WebGLRenderer({ canvas: worldCanvas, antialias: true });
+            renderer.setSize(canvasContainer.clientWidth, canvasContainer.clientHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            const ambientLight = new THREE.AmbientLight(0xb0c0d0, 1.5);
+            scene.add(ambientLight);
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 2.5);
+            directionalLight.position.set(1, 1, 0.5).normalize();
+            scene.add(directionalLight);
+            
+            cannonWorld = new CANNON.World();
+            cannonWorld.gravity.set(0, 0, 0);
+
+            playerBody = new CANNON.Body({ mass: 5 });
+            const cylinderShape = new CANNON.Cylinder(0.4, 0.4, 1.0, 8);
+            playerBody.addShape(cylinderShape, new CANNON.Vec3(0, 0, 0));
+            const sphereShape = new CANNON.Sphere(0.4);
+            playerBody.addShape(sphereShape, new CANNON.Vec3(0, -0.5, 0));
+            playerBody.fixedRotation = true;
+            playerBody.updateMassProperties();
+            playerBody.collisionFilterGroup = GROUP_PLAYER;
+            playerBody.collisionFilterMask = GROUP_WALL | GROUP_WORLD; // Collide with walls and world
+            playerBody.linearDamping = 0.01; // Set default damping
+
+            playerBody.position.set(0, 50, 0);
+            cannonWorld.addBody(playerBody);
+
+            createGravityGridLines(); // Add the visual grid
+            createCenterPlanes(); // Add the physics planes
+            initControls();
+            window.addEventListener('resize', onWindowResize); // Use named function
+            onWindowResize(); // Call once initially
+            animate();
+        }
+        
+        function onWindowResize() {
+            // Adjust layout for smaller screens if needed
+            const width = canvasContainer.clientWidth;
+            const height = canvasContainer.clientHeight;
+            camera.aspect = width / height;
+            camera.updateProjectionMatrix();
+            renderer.setSize(width, height);
+        }
+
+        // --- Chunk Management ---
+        async function updateChunks() { // Made async
+            if (!isWorldReady) return; // FIX: Don't run until startNewWorld is complete
+            
+            const playerPos = playerBody.position;
+            const currentChunkX = Math.floor(playerPos.x / CHUNK_SIZE);
+            const currentChunkY = Math.floor(playerPos.y / CHUNK_SIZE);
+            const currentChunkZ = Math.floor(playerPos.z / CHUNK_SIZE);
+
+            if (currentChunkX === lastPlayerChunk.x && currentChunkY === lastPlayerChunk.y && currentChunkZ === lastPlayerChunk.z) return;
+            
+            loader.style.display = 'flex';
+            const chunksToLoad = new Set();
+            for (let x = currentChunkX - VIEW_DISTANCE; x <= currentChunkX + VIEW_DISTANCE; x++) {
+                for (let y = currentChunkY - VIEW_DISTANCE; y <= currentChunkY + VIEW_DISTANCE; y++) {
+                    for (let z = currentChunkZ - VIEW_DISTANCE; z <= currentChunkZ + VIEW_DISTANCE; z++) {
+                        if (Math.abs(x * CHUNK_SIZE) > worldParams.worldBounds ||
+                            Math.abs(y * CHUNK_SIZE) > worldParams.worldBounds ||
+                            Math.abs(z * CHUNK_SIZE) > worldParams.worldBounds) continue;
+
+                        chunksToLoad.add(`${x},${y},${z}`);
+                    }
+                }
+            }
+            
+            // Unload chunks synchronously first
+            const chunksToRemove = [];
+            for (const chunkId in worldChunks) {
+                if (!chunksToLoad.has(chunkId)) {
+                    if (worldChunks[chunkId].group) scene.remove(worldChunks[chunkId].group);
+                    if (worldChunks[chunkId].body) cannonWorld.remove(worldChunks[chunkId].body);
+                    worldChunks[chunkId].group?.children.forEach(c => c.geometry?.dispose()); // Safer dispose
+                    chunksToRemove.push(chunkId); // Collect IDs to remove
+                }
+            }
+             chunksToRemove.forEach(id => delete worldChunks[id]); // Remove after iteration
+
+            // Load new chunks asynchronously
+            const generationPromises = [];
+            for (const chunkId of chunksToLoad) {
+                if (!worldChunks[chunkId]) {
+                    const [x, y, z] = chunkId.split(',').map(Number);
+                    // Add a placeholder to prevent duplicate generation attempts
+                    worldChunks[chunkId] = { group: null, body: null, generating: true };
+                    generationPromises.push(generateChunk(x, y, z));
+                }
+            }
+            
+            await Promise.all(generationPromises); // Wait for all new chunks to generate
+
+            lastPlayerChunk = {x: currentChunkX, y: currentChunkY, z: currentChunkZ};
+            loader.style.display = 'none';
+            updateWorldInfo(currentSeedString, lastPlayerChunk);
+        }
+
+       async function generateChunk(chunkX, chunkY, chunkZ) {
+            let worldData;
+            const chunkId = `${chunkX},${chunkY},${chunkZ}`;
+
+            try {
+                 // Always use CPU path for now
+                 worldData = generateChunkDataCPU(chunkX, chunkY, chunkZ);
+                 worldData = postProcessChunkData(worldData, chunkX, chunkY, chunkZ);
+
+                 const { geometries, physicsVertices, physicsIndices } = buildGreedyMesh(worldData);
+
+                 if (physicsVertices.length === 0) {
+                    if(worldChunks[chunkId]?.generating) delete worldChunks[chunkId];
+                     return;
+                 }
+
+                 const chunkGroup = new THREE.Group();
+                 for (const blockType in geometries) {
+                    if (!worldMaterials[blockType]) {
+                        // This will happen for dynamically generated IDs.
+                        // We will just use the stone material as a fallback.
+                        const mat = worldMaterials[BLOCK.STONE];
+                        const mergedGeometry = mergeGeometries(geometries[blockType]);
+                        if (mergedGeometry) {
+                            const mesh = new THREE.Mesh(mergedGeometry, mat);
+                            chunkGroup.add(mesh);
+                        }
+                    } else {
+                        const mergedGeometry = mergeGeometries(geometries[blockType]);
+                        if (mergedGeometry) {
+                            const mesh = new THREE.Mesh(mergedGeometry, worldMaterials[blockType]);
+                            chunkGroup.add(mesh);
+                        }
+                    }
+                 }
+                const chunkPos = new THREE.Vector3(chunkX, chunkY, chunkZ).multiplyScalar(CHUNK_SIZE);
+                chunkGroup.position.copy(chunkPos);
+                scene.add(chunkGroup);
+
+                const trimeshShape = new CANNON.Trimesh(physicsVertices, physicsIndices);
+                const body = new CANNON.Body({ mass: 0, collisionFilterGroup: GROUP_WORLD, collisionFilterMask: GROUP_PLAYER });
+                body.addShape(trimeshShape);
+                body.position.copy(chunkPos);
+                cannonWorld.addBody(body);
+
+                if(worldChunks[chunkId]?.generating) {
+                    worldChunks[chunkId] = { group: chunkGroup, body: body, generating: false };
+                } else {
+                     scene.remove(chunkGroup);
+                     cannonWorld.remove(body);
+                     chunkGroup.children.forEach(c => c.geometry.dispose());
+                }
+
+            } catch (error) {
+                 console.error(`Error generating chunk ${chunkId}:`, error);
+                 if(worldChunks[chunkId]?.generating) {
+                     delete worldChunks[chunkId];
+                 }
+            }
+        }
+        
+        // --- CPU Generation ---
+         function generateChunkDataCPU(chunkX, chunkY, chunkZ) {
+             const data = new Uint16Array(CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE).fill(0);
+             const set = (x,y,z,t,a=0) => { if(x>=0&&x<CHUNK_SIZE&&y>=0&&y<CHUNK_SIZE&&z>=0&&z<CHUNK_SIZE) data[y*CHUNK_SIZE*CHUNK_SIZE+z*CHUNK_SIZE+x] = packBlock(t, a); };
+             const { densityScale, densityThreshold, worldBounds, hollowRadius, biomes, rarityTable } = worldParams;
+             const AIR_ID = BLOCK.AIR;
+             const STONE_ID = BLOCK.STONE;
+             const BASALT_ID = BLOCK.BASALT;
+
+             const wormMask = carveWorms(chunkX, chunkY, chunkZ, worldParams.numericalSeed + chunkX + chunkY + chunkZ);
+
+             for (let y = 0; y < CHUNK_SIZE; y++) {
+                 for (let x = 0; x < CHUNK_SIZE; x++) {
+                     for (let z = 0; z < CHUNK_SIZE; z++) {
+                         const globalX = chunkX * CHUNK_SIZE + x;
+                         const globalY = chunkY * CHUNK_SIZE + y;
+                         const globalZ = chunkZ * CHUNK_SIZE + z;
+                         
+                         if (Math.abs(globalX) > worldBounds || Math.abs(globalY) > worldBounds || Math.abs(globalZ) > worldBounds) continue;
+
+                         // Check worm mask first
+                         if (wormMask[y*CHUNK_SIZE*CHUNK_SIZE + z*CHUNK_SIZE + x] === 1) {
+                             set(x, y, z, AIR_ID);
+                             continue;
+                         }
+
+                         let density = noise.density(globalX / densityScale, globalY / densityScale, globalZ / densityScale);
+                         
+                         if (biomes.has('SKY')) {
+                              density += noise.island(globalX / 40, globalY / 30, globalZ / 40) * 1.5 - 0.75;
+                         }
+                         
+                         let blockID = AIR_ID;
+
+                         if (biomes.has('HOLLOW')) {
+                              const dist = Math.sqrt(globalX*globalX + globalY*globalY + globalZ*globalZ);
+                              if (dist < hollowRadius) {
+                                  set(x, y, z, AIR_ID);
+                                  continue;
+                              }
+                              // In shell, default to solid, but apply density noise
+                              if (density > densityThreshold) { 
+                                blockID = STONE_ID;
+                              }
+                         } else {
+                             if (density > densityThreshold) {
+                                blockID = biomes.has('VOLCANIC') ? BASALT_ID : STONE_ID;
+                             }
+                         }
+
+
+                         if (blockID === STONE_ID && globalY < worldBounds * 0.2) {
+                             const depthKm = getDepthKm(globalX, globalY, globalZ, worldBounds);
+                             const matHash = xxh64(globalX, xxh64(globalY, globalZ ^ worldParams.numericalSeed));
+                             blockID = chooseBlockWithDepth(matHash, depthKm, rarityTable, noise.rand);
+                         }
+                         
+                         set(x, y, z, blockID);
+                     }
+                 }
+             }
+             return data;
+         }
+
+        // --- Post Processing (CPU) ---
+        function postProcessChunkData(data, chunkX, chunkY, chunkZ) {
+             const AIR_ID = BLOCK.AIR;
+             const STONE_ID = BLOCK.STONE;
+             const DIRT_ID = BLOCK.DIRT;
+             const GRASS_ID = BLOCK.GRASS;
+             const SAND_ID = BLOCK.SAND;
+             const WATER_ID = BLOCK.WATER;
+             const BASALT_ID = BLOCK.BASALT;
+             const OBSIDIAN_ID = BLOCK.OBSIDIAN;
+             const LAVA_ID = BLOCK.LAVA;
+             const MUSHROOM_STEM_ID = BLOCK.MUSHROOM_STEM;
+             const MUSHROOM_GLOW_ID = BLOCK.MUSHROOM_GLOW;
+             const WOOD_ID = BLOCK.WOOD;
+             const LEAVES_ID = BLOCK.LEAVES;
+             const GEM_ORE_ID = BLOCK.GEM_ORE;
+
+             const get = (x,y,z) => (x<0||x>=CHUNK_SIZE||y<0||y>=CHUNK_SIZE||z<0||z>=CHUNK_SIZE) ? AIR_ID : unpackBlock(data[y*CHUNK_SIZE*CHUNK_SIZE+z*CHUNK_SIZE+x]).id;
+             const set = (x,y,z,t) => { if(x>=0&&x<CHUNK_SIZE&&y>=0&&y<CHUNK_SIZE&&z>=0&&z<CHUNK_SIZE) data[y*CHUNK_SIZE*CHUNK_SIZE+z*CHUNK_SIZE+x] = packBlock(t, 0); };
+
+             const { liquidCoreSize, worldBounds, biomes } = worldParams;
+
+              for (let x = 0; x < CHUNK_SIZE; x++) {
+                 for (let z = 0; z < CHUNK_SIZE; z++) {
+                      for (let y = 0; y < CHUNK_SIZE; y++) {
+                          const globalX = chunkX * CHUNK_SIZE + x;
+                          const globalY = chunkY * CHUNK_SIZE + y;
+                          const globalZ = chunkZ * CHUNK_SIZE + z;
+
+                         if ( liquidCoreSize > 0 &&
+                             Math.abs(globalX) < liquidCoreSize && Math.abs(globalY) < liquidCoreSize && Math.abs(globalZ) < liquidCoreSize &&
+                             get(x, y, z) === AIR_ID
+                         ) {
+                              const waterCaveNoise = noise.waterCave(globalX / 50, globalY / 50, globalZ / 50);
+                              if(waterCaveNoise < 0.6) {
+                                 set(x,y,z, biomes.has('VOLCANIC') ? LAVA_ID : WATER_ID);
+                                 continue; 
+                              }
+                         }
+                         
+                         let isSurface = false;
+                         let isInnerSurface = false;
+                         const myDist = Math.sqrt(globalX*globalX + globalY*globalY + globalZ*globalZ);
+                         let surfaceNormal = null;
+                         const currentBlock = get(x,y,z);
+
+                         if (currentBlock !== AIR_ID && currentBlock !== WATER_ID && currentBlock !== LAVA_ID) {
+                             for(const face of facePositions) {
+                                 if (get(x + face.dir[0], y + face.dir[1], z + face.dir[2]) === AIR_ID) {
+                                     isSurface = true;
+                                     surfaceNormal = face.dir;
+                                     const neighborDist = Math.sqrt(
+                                         (globalX + face.dir[0])**2 +
+                                         (globalY + face.dir[1])**2 +
+                                         (globalZ + face.dir[2])**2
+                                     );
+                                     if (neighborDist < myDist) isInnerSurface = true;
+                                     break; 
+                                 }
+                             }
+
+                              if (isSurface && surfaceNormal) { 
+                                 if (isInnerSurface && biomes.has('HOLLOW')) {
+                                     if (currentBlock === STONE_ID && noise.rand() < 0.05) {
+                                         set(x,y,z, GEM_ORE_ID);
+                                     }
+                                 } else { 
+                                     if ((currentBlock === STONE_ID || currentBlock === DIRT_ID)) {
+                                         if (biomes.has('TERRA') || biomes.has('ALIEN') || biomes.has('SKY')) {
+                                             set(x, y, z, GRASS_ID);
+                                         } else if (biomes.has('VOLCANIC') || biomes.has('HOLLOW')) {
+                                             set(x, y, z, OBSIDIAN_ID);
+                                         } else if (biomes.has('TROPICAL')) {
+                                             set(x, y, z, SAND_ID);
+                                         }
+                                     }
+                                 
+                                     if (get(x, y, z) === GRASS_ID) { 
+                                         if (worldParams.treeChance && noise.feature(globalX / 10, globalZ / 10) > 0.7) {
+                                             const height = 4 + Math.floor(noise.rand() * 3);
+                                             for(let i=1; i <= height; i++) set(x + surfaceNormal[0]*i, y + surfaceNormal[1]*i, z + surfaceNormal[2]*i, WOOD_ID);
+                                             const radius = 2;
+                                             const topX = x + surfaceNormal[0]*height;
+                                             const topY = y + surfaceNormal[1]*height;
+                                             const topZ = z + surfaceNormal[2]*height;
+
+                                             for(let ly = -radius; ly <= radius; ly++) {
+                                                 for(let lx = -radius; lx <= radius; lx++) {
+                                                     for(let lz = -radius; lz <= radius; lz++) {
+                                                          if(Math.sqrt(lx*lx + ly*ly + lz*lz) <= radius) { 
+                                                             set(topX+lx, topY+ly, topZ+lz, LEAVES_ID);
+                                                         }
+                                                     }
+                                                 }
+                                             }
+                                         }
+                                     }
+                                     
+                                     if (currentBlock === STONE_ID || currentBlock === BASALT_ID) {
+                                         if (biomes.has('ALIEN') && noise.feature(globalX/8, globalZ/8) > 0.6) {
+                                             const h = 3 + Math.floor(noise.rand() * 4);
+                                              for(let i=1; i<=h; i++) set(x+surfaceNormal[0]*i, y+surfaceNormal[1]*i, z+surfaceNormal[2]*i, MUSHROOM_STEM_ID);
+                                             const radius = 1 + Math.floor(noise.rand() * 2);
+                                             const topX = x + surfaceNormal[0]*h;
+                                             const topY = y + surfaceNormal[1]*h;
+                                             const topZ = z + surfaceNormal[2]*h;
+                                             
+                                              for(let ly = -radius; ly <= radius; ly++) {
+                                                 for(let lx = -radius; lx <= radius; lx++) {
+                                                     for(let lz = -radius; lz <= radius; lz++) {
+                                                          if(Math.sqrt(lx*lx+ly*ly+lz*lz) <= radius) {
+                                                             set(topX+lx, topY+ly, topZ+lz, MUSHROOM_GLOW_ID);
+                                                         }
+                                                     }
+                                                 }
+                                              }
+                                         }
+                                     }
+                                 }
+                             }
+                         }
+                     }
+                 }
+             }
+             return data;
+         }
+        
+        // --- Greedy Meshing (Updated) ---
+        function buildGreedyMesh(chunkData) {
+            const geometries = {};
+            const physicsVertices = [];
+            const physicsIndices = [];
+            const size = CHUNK_SIZE;
+            const AIR_ID = BLOCK.AIR;
+            const WATER_ID = BLOCK.WATER;
+            const LEAVES_ID = BLOCK.LEAVES;
+            
+            const getBlock = (x, y, z) => (x<0||x>=size||y<0||y>=size||z<0||z>=size) ? AIR_ID : unpackBlock(chunkData[y*size*size+z*size+x]).id;
+
+             for (let d = 0; d < 3; ++d) { 
+                const u = (d + 1) % 3; 
+                const v = (d + 2) % 3;
+                const x = [0, 0, 0];
+                const q = [0, 0, 0];
+                const mask = new Int32Array(size * size); 
+                q[d] = 1; 
+
+                for (x[d] = -1; x[d] < size;) {
+                    let n = 0;
+                    for (x[v] = 0; x[v] < size; ++x[v]) {
+                        for (x[u] = 0; x[u] < size; ++x[u]) {
+                            const currentBlock = (x[d] >= 0) ? getBlock(x[0], x[1], x[2]) : AIR_ID;
+                            const nextBlock = (x[d] < size - 1) ? getBlock(x[0] + (d === 0 ? 1 : 0), x[1] + (d === 1 ? 1 : 0), x[2] + (d === 2 ? 1 : 0)) : AIR_ID;
+
+                            const currentIsTransparent = currentBlock === AIR_ID || currentBlock === WATER_ID || currentBlock === LEAVES_ID;
+                            const nextIsTransparent = nextBlock === AIR_ID || nextBlock === WATER_ID || nextBlock === LEAVES_ID;
+
+                             if (currentIsTransparent === nextIsTransparent) {
+                                mask[n] = 0;
+                            } else if (currentIsTransparent) {
+                                mask[n] = nextBlock; 
+                            } else {
+                                mask[n] = -currentBlock; 
+                            }
+                            n++;
+                        }
+                    }
+                    x[d]++; 
+                    n = 0;
+
+                    for (let j = 0; j < size; ++j) {
+                        for (let i = 0; i < size;) {
+                            if (mask[n] !== 0) {
+                                const currentMask = mask[n];
+                                let w = 1;
+                                while (i + w < size && mask[n + w] === currentMask) {
+                                    w++;
+                                }
+                                let h = 1;
+                                let done = false;
+                                while (j + h < size) {
+                                    for (let k = 0; k < w; ++k) {
+                                        if (mask[n + k + h * size] !== currentMask) {
+                                            done = true;
+                                            break;
+                                        }
+                                    }
+                                    if (done) break;
+                                    h++;
+                                }
+
+                                x[u] = i; x[v] = j;
+                                q[u] = w; q[v] = h;
+
+                                const blockId = Math.abs(currentMask);
+                                const positions = [];
+                                
+                                const p = [x[0], x[1], x[2]]; 
+                                const du = [0,0,0]; du[u] = q[u]; 
+                                const dv = [0,0,0]; dv[v] = q[v]; 
+
+                                positions.push(p[0],          p[1],          p[2]);
+                                positions.push(p[0] + du[0], p[1] + du[1], p[2] + du[2]);
+                                positions.push(p[0] + dv[0], p[1] + dv[1], p[2] + dv[2]);
+                                positions.push(p[0] + du[0] + dv[0], p[1] + du[1] + dv[1], p[2] + du[2] + dv[2]);
+
+                                const idx = physicsVertices.length / 3;
+                                positions.forEach(pv => physicsVertices.push(pv)); 
+                                
+                                const indices = (currentMask > 0) ? [0, 2, 1, 1, 2, 3] : [0, 1, 2, 2, 1, 3]; 
+                                indices.forEach(ind => physicsIndices.push(idx + ind));
+
+
+                                if (!geometries[blockId]) geometries[blockId] = [];
+                                const geo = new THREE.BufferGeometry();
+                                geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+                                geo.setIndex(indices);
+                                geo.computeVertexNormals(); 
+                                geometries[blockId].push(geo);
+
+                                for (let l = 0; l < h; ++l) {
+                                    for (let k = 0; k < w; ++k) {
+                                        mask[n + k + l * size] = 0;
+                                    }
+                                }
+                                i += w; n += w;
+                            } else {
+                                i++; n++;
+                            }
+                        }
+                    }
+                }
+            }
+             return { geometries, physicsVertices, physicsIndices };
+        }
+        
+        function updateWorldInfo(seed, { x, y, z }) {
+            const worldSize = worldParams.worldBounds * 2;
+            const p = playerBody.position;
+            document.getElementById('worldInfo').innerHTML = `
+                <h3 class="text-xl font-bold text-white">World: <span class="text-indigo-400">${seed}</span></h3>
+                <div class="grid grid-cols-1 gap-4 text-sm">
+                    <div class="bg-gray-900 p-3 rounded-lg"><p class="font-semibold text-gray-400">World Description</p><p class="text-lg text-white">${worldParams.typeName}</p></div>
+                    <div class="bg-gray-900 p-3 rounded-lg"><p class="font-semibold text-gray-400">World Size</p><p class="text-lg text-white">${worldParams.worldSizeName} (~${worldSize}x${worldSize}x${worldSize})</p></div>
+                    <div class="bg-gray-900 p-3 rounded-lg"><p class="font-semibold text-gray-400">Player Chunk (X,Y,Z)</p><p class="text-lg text-white">${x ?? 'N/A'}, ${y ?? 'N/A'}, ${z ?? 'N/A'}</p></div>
+                    <div class="bg-gray-900 p-3 rounded-lg"><p class="font-semibold text-gray-400">Player Coords (X,Y,Z)</p><p class="text-lg text-white">${p.x.toFixed(1)}, ${p.y.toFixed(1)}, ${p.z.toFixed(1)}</p></div>
+                </div>`;
+        }
+
+        function hideOverlayOnce() { if (!overlayIsVisible) return; controlsOverlay.classList.remove('visible'); overlayIsVisible = false; }
+        function initControls() {
+            const isTouchDevice = 'ontouchstart' in window;
+            const joystickContainer = document.getElementById('joystick-container');
+            const joystickStick = document.getElementById('joystick-stick');
+            if (isTouchDevice) {
+                document.getElementById('desktop-instructions').style.display = 'none';
+                document.getElementById('mobile-instructions').style.display = 'block';
+                joystickContainer.style.display = 'block';
+                canvasContainer.addEventListener('touchstart', (e) => {
+                    if (e.target === worldCanvas && e.touches.length === 1) {
+                        const touch = e.touches[0];
+                        if (touch.clientX > window.innerWidth / 2) {
+                             if (canJump) { playerBody.velocity.y = 9; canJump = false; }
+                        }
+                    }
+                });
+                let joystickTouchId = null;
+                joystickContainer.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    joystickTouchId = e.changedTouches[0].identifier;
+                    hideOverlayOnce();
+                }, { passive: false });
+                window.addEventListener('touchmove', (e) => {
+                     for (let i = 0; i < e.changedTouches.length; i++) {
+                        const touch = e.changedTouches[i];
+                        if (touch.identifier === joystickTouchId) {
+                            const rect = joystickContainer.getBoundingClientRect();
+                            const x = (touch.clientX - rect.left - 60) / 60;
+                            const y = (touch.clientY - rect.top - 60) / 60;
+                            const mag = Math.sqrt(x*x + y*y);
+                            if (mag > 1) { movement.x = x / mag; movement.z = y / mag; } else { movement.x = x; movement.z = y; }
+                            joystickStick.style.transform = `translate(${movement.x * 30}px, ${movement.z * 30}px)`;
+                        } else { handleLook(e.changedTouches[i]); }
+                    }
+                }, { passive: false });
+                window.addEventListener('touchend', (e) => {
+                    for (let i = 0; i < e.changedTouches.length; i++) {
+                        if (e.changedTouches[i].identifier === joystickTouchId) {
+                            joystickTouchId = null;
+                            movement.x = 0; movement.z = 0;
+                            joystickStick.style.transform = `translate(0px, 0px)`;
+                        }
+                    }
+                });
+            } else {
+                let isMouseDown = false;
+                worldCanvas.addEventListener('mousedown', (e) => { isMouseDown = true; hideOverlayOnce(); });
+                window.addEventListener('mouseup', (e) => { isMouseDown = false; });
+                window.addEventListener('mousemove', (e) => { if (isMouseDown) handleLook(e); });
+            }
+        }
+
+        //let pitch = 0; // Already declared
+        //let yaw = 0; // Already declared
+        function handleLook(e) {
+            const moveX = e.movementX || (e.touches ? e.touches[0].pageX - (window.lastX || e.touches[0].pageX) : 0);
+            const moveY = e.movementY || (e.touches ? e.touches[0].pageY - (window.lastY || e.touches[0].pageY) : 0);
+
+            yaw -= moveX * 0.002;
+            pitch -= moveY * 0.002;
+            pitch = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, pitch));
+
+            if (e.touches) { window.lastX = e.touches[0].pageX; window.lastY = e.touches[0].pageY; }
+        }
+        function handleKeyboardLook(delta) {
+            const lookSpeed = 1.5;
+            if (window.keys.ArrowUp) pitch += lookSpeed * delta;
+            if (window.keys.ArrowDown) pitch -= lookSpeed * delta;
+            if (window.keys.ArrowLeft) yaw += lookSpeed * delta;
+            if (window.keys.ArrowRight) yaw -= lookSpeed * delta;
+            pitch = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, pitch));
+        }
+
+        const forwardVec = new THREE.Vector3();
+        const rightVec = new THREE.Vector3();
+        const worldVelocity = new THREE.Vector3();
+        //let currentUp = new THREE.Vector3(0,1,0); // Already declared
+
+        function handleControls() {
+            const speed = 5;
+            const moveX = movement.x || (window.keys.KeyD ? 1 : 0) - (window.keys.KeyA ? 1 : 0);
+            const moveZ = movement.z || (window.keys.KeyW ? 1 : 0) - (window.keys.KeyS ? 1 : 0);
+
+            const upQuat = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,1,0), currentUp);
+            const yawQuat = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0), yaw);
+            const pitchQuat = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1,0,0), pitch);
+
+            camera.quaternion.copy(upQuat).multiply(yawQuat).multiply(pitchQuat);
+
+            camera.getWorldDirection(forwardVec);
+            rightVec.crossVectors(forwardVec, currentUp).normalize();
+            const forwardOnPlane = new THREE.Vector3().crossVectors(currentUp, rightVec);
+
+            worldVelocity.set(0,0,0);
+            worldVelocity.add(forwardOnPlane.multiplyScalar(moveZ));
+            worldVelocity.add(rightVec.multiplyScalar(moveX));
+
+            if (worldVelocity.length() > 0) worldVelocity.normalize().multiplyScalar(speed);
+
+            const upVec = new CANNON.Vec3(currentUp.x, currentUp.y, currentUp.z);
+            let verticalComponent = new CANNON.Vec3();
+            if(!isFlying) {
+                const dot = playerBody.velocity.dot(upVec);
+                verticalComponent = upVec.scale(dot);
+            }
+            const newVelocity = new CANNON.Vec3(worldVelocity.x, worldVelocity.y, worldVelocity.z).vadd(verticalComponent);
+            playerBody.velocity.copy(newVelocity);
+
+            if (isFlying) {
+                let moveY = 0;
+                if (window.keys.Space) moveY = speed;
+                if (window.keys.ShiftLeft) moveY = -speed;
+                // FIX: Use currentUp (camera's up) for flying direction
+                const flyVertical = new CANNON.Vec3(currentUp.x, currentUp.y, currentUp.z).scale(moveY);
+                playerBody.velocity.copy(worldVelocity).vadd(flyVertical, playerBody.velocity);
+            } else {
+                // Ground check
+                const contactPoint = new CANNON.Vec3(playerBody.position.x, playerBody.position.y, playerBody.position.z).vsub(upVec.scale(1.1));
+                const result = new CANNON.RaycastResult();
+                canJump = cannonWorld.raycastClosest(playerBody.position, contactPoint, { collisionFilterMask: GROUP_WORLD | GROUP_WALL }, result);
+            }
+        }
+
+        function animate() {
+            const delta = Math.min(clock.getDelta(), 0.1); 
+             if (delta <= 0) { 
+                 requestAnimationFrame(animate);
+                 return;
+             }
+            requestAnimationFrame(animate);
+            
+            if (!isWorldReady) return; 
+
+            const pos = playerBody.position.clone(); 
+            const vel = playerBody.velocity;
+            const absX = Math.abs(pos.x), absY = Math.abs(pos.y), absZ = Math.abs(pos.z);
+            let gravityForce = new CANNON.Vec3(0,0,0);
+            
+            const inDeadZone = absX < CENTER_BOX_HALF_SIZE && absY < CENTER_BOX_HALF_SIZE && absZ < CENTER_BOX_HALF_SIZE;
+
+            // Determine dominant axis and target "up" ONLY if OUTSIDE the dead zone
+            if (!inDeadZone) {
+                if (absY >= absX && absY >= absZ) {
+                    targetUp.set(0, Math.sign(pos.y) || 1, 0);
+                } else if (absX >= absY && absX >= absZ) {
+                    targetUp.set(Math.sign(pos.x) || 1, 0, 0);
+                } else {
+                    targetUp.set(0, 0, Math.sign(pos.z) || 1);
+                }
+                
+                // FIX: Camera lerps only when outside
+                currentUp.lerp(targetUp, 0.1).normalize();
+            }
+            
+            // Apply gravity force if not flying
+            if (!isFlying) {
+                let forceMagnitude = 20 * playerBody.mass;
+                
+                // Gravity is always on, based on the (potentially sticky) targetUp
+                playerBody.linearDamping = 0.01; 
+                
+                gravityForce.set(
+                    -targetUp.x * forceMagnitude, // <-- Use sticky targetUp
+                    -targetUp.y * forceMagnitude, // <-- Use sticky targetUp
+                    -targetUp.z * forceMagnitude  // <-- Use sticky targetUp
+                );
+                
+                playerBody.applyForce(gravityForce, pos);
+
+                // Update collision filter based on Shift key
+                if (window.keys.ShiftLeft) {
+                    playerBody.collisionFilterMask = GROUP_PLAYER | GROUP_WORLD; // Phase through walls
+                } else {
+                    playerBody.collisionFilterMask = GROUP_PLAYER | GROUP_WALL | GROUP_WORLD; // Collide normally
+                }
+
+            } else {
+                 playerBody.linearDamping = 0.01; 
+                 playerBody.collisionFilterMask = GROUP_PLAYER | GROUP_WORLD; // Phase through walls when flying
+            }
+            
+            cannonWorld.step(1/60, delta, 10); 
+            
+            handleKeyboardLook(delta);
+            handleControls();
+            camera.position.copy(playerBody.position);
+            chunkUpdateInterval += delta;
+            if (chunkUpdateInterval > 0.25) { updateChunks(); chunkUpdateInterval = 0; }
+            renderer.render(scene, camera);
+        }
+
+        function generateWorldMaterials() { // Removed 'colors' param
+            const mats = {};
+            for (let i = 0; i <= MAX_BLOCK_ID; i++) {
+                const rec = rev[i];
+                if (!rec) continue; // Skip empty/unused IDs
+
+                const params = {};
+                const color = new THREE.Color().setHSL(rec.baseH, rec.baseS, rec.baseL);
+                params.color = color;
+
+                if (rec.transparent > 0) {
+                    params.transparent = true;
+                    params.opacity = rec.name === 'LEAVES' ? 0.8 : 0.6;
+                    params.side = THREE.DoubleSide;
+                    params.depthWrite = rec.name === 'LEAVES';
+                }
+                if (rec.emissive > 0) {
+                    params.emissive = new THREE.Color(color).multiplyScalar(1.2);
+                }
+                
+                mats[i] = new THREE.MeshLambertMaterial(params);
+            }
+            return mats;
+        }
+
+        function getWorldParams(seed, overrides = {}) {
+            const rand = seededRandom(createSeedFromString(seed));
+            const biomes = new Set();
+            
+            const typeKey = overrides.worldType && overrides.worldType !== 'Any' ? overrides.worldType : null;
+            let worldSizeName = overrides.worldSize && overrides.worldSize !== 'Any' ? overrides.worldSize : null;
+            let worldBounds;
+
+            if (!worldSizeName) {
+                const sizeVal = rand();
+                if (sizeVal < 0.05) { worldSizeName = 'Colossal'; }
+                else if (sizeVal < 0.20) { worldSizeName = 'Large'; }
+                else if (sizeVal < 0.55) { worldSizeName = 'Medium'; }
+                else { worldSizeName = 'Small'; }
+            }
+
+            switch(worldSizeName) {
+                case 'Colossal': worldBounds = 1000; break;
+                case 'Large': worldBounds = 400; break;
+                case 'Medium': worldBounds = 200; break;
+                case 'Small': worldBounds = 100; break;
+            }
+
+            const biomeScores = {
+                Volcanic: rand(), Tropical: rand(), Sky: rand(),
+                Alien: rand(), Hollow: rand(), Terra: rand(),
+            };
+
+            if (typeKey && biomeScores[typeKey]) {
+                biomeScores[typeKey] = 1.1; // Force dominant
+            }
+
+            if (worldSizeName === 'Colossal') {
+                for (const key in biomeScores) biomeScores[key] += 0.5;
+            }
+
+            let dominantBiome = 'Terra';
+            let maxScore = 0;
+            for (const biome in biomeScores) {
+                if (biomeScores[biome] > maxScore) {
+                    maxScore = biomeScores[biome];
+                    dominantBiome = biome;
+                }
+            }
+            biomes.add(dominantBiome.toUpperCase());
+
+            for (const biome in biomeScores) {
+                if (biome !== dominantBiome && biomeScores[biome] > 0.7) {
+                    biomes.add(biome.toUpperCase());
+                }
+            }
+
+            let params = {};
+            
+            switch(dominantBiome) {
+                case 'Volcanic':
+                    params = { densityScale: 40, densityThreshold: 0.1, liquidCoreSize: worldBounds * 0.25, treeChance: 0 };
+                    break;
+                case 'Tropical':
+                    params = { densityScale: 35, densityThreshold: 0.15, liquidCoreSize: worldBounds * 0.4, treeChance: 0.005 };
+                    break;
+                case 'Sky':
+                    params = { densityScale: 45, densityThreshold: 0.25, liquidCoreSize: 0, hasFloatingIslands: true, treeChance: 0.01 };
+                    break;
+                case 'Alien':
+                    params = { densityScale: 35, densityThreshold: 0.1, liquidCoreSize: 0, treeChance: 0 }; // Lowered threshold
+                    break;
+                case 'Hollow':
+                    params = { densityScale: 60, densityThreshold: 0.1, liquidCoreSize: 0, hollowRadius: worldBounds * 0.8, treeChance: 0 };
+                    break;
+                default:
+                    dominantBiome = 'Terra';
+                    params = { densityScale: 50, densityThreshold: 0.1, liquidCoreSize: 0, hasFloatingIslands: rand() > 0.7, treeChance: 0.01 };
+                    break;
+            }
+
+            let typeName = dominantBiome;
+            const additions = [];
+            biomes.forEach(b => {
+                const bLower = b.charAt(0) + b.slice(1).toLowerCase();
+                if (bLower !== dominantBiome) additions.push(bLower);
+            });
+            if (additions.length > 0) {
+                typeName += ` with ${additions.join(', ')}`;
+            }
+            
+            return { ...params, typeName, worldSizeName, worldBounds, biomes };
+        }
+
+        function createGravityGridLines() {
+            const size = CENTER_BOX_HALF_SIZE * 2;
+            const halfSize = CENTER_BOX_HALF_SIZE;
+            const gridMaterial = new THREE.MeshBasicMaterial({
+                color: 0x00ffff, // Cyan color
+                emissive: 0x00ffff,
+                transparent: true,
+                opacity: 0.2,
+                side: THREE.DoubleSide,
+                depthWrite: false // Don't obscure blocks behind it
+            });
+
+            gravityGridLines = new THREE.Group();
+
+            const planeGeometry = new THREE.PlaneGeometry(size, size);
+
+            // +X / -X planes
+            const planeXPos = new THREE.Mesh(planeGeometry, gridMaterial);
+            planeXPos.position.x = halfSize;
+            planeXPos.rotation.y = Math.PI / 2;
+            gravityGridLines.add(planeXPos);
+
+            const planeXNeg = new THREE.Mesh(planeGeometry, gridMaterial);
+            planeXNeg.position.x = -halfSize;
+            planeXNeg.rotation.y = -Math.PI / 2;
+            gravityGridLines.add(planeXNeg);
+
+            // +Y / -Y planes
+            const planeYPos = new THREE.Mesh(planeGeometry, gridMaterial);
+            planeYPos.position.y = halfSize;
+            planeYPos.rotation.x = -Math.PI / 2;
+            gravityGridLines.add(planeYPos);
+
+            const planeYNeg = new THREE.Mesh(planeGeometry, gridMaterial);
+            planeYNeg.position.y = -halfSize;
+            planeYNeg.rotation.x = Math.PI / 2;
+            gravityGridLines.add(planeYNeg);
+
+            // +Z / -Z planes
+            const planeZPos = new THREE.Mesh(planeGeometry, gridMaterial);
+            planeZPos.position.z = halfSize;
+            // No rotation needed
+            gravityGridLines.add(planeZPos);
+
+            const planeZNeg = new THREE.Mesh(planeGeometry, gridMaterial);
+            planeZNeg.position.z = -halfSize;
+            planeZNeg.rotation.y = Math.PI;
+            gravityGridLines.add(planeZNeg);
+
+            scene.add(gravityGridLines);
+        }
+
+        function createCenterPlanes() {
+            const planeMaterial = new CANNON.Material("planeMaterial"); // Invisible material
+            const halfSize = CENTER_BOX_HALF_SIZE;
+            const plateThickness = 0.5; // How thick the invisible walls are
+            isTouching = {}; // Reset touching state
+
+            const planeShapeX = new CANNON.Box(new CANNON.Vec3(plateThickness, halfSize, halfSize));
+            const planeShapeY = new CANNON.Box(new CANNON.Vec3(halfSize, plateThickness, halfSize));
+            const planeShapeZ = new CANNON.Box(new CANNON.Vec3(halfSize, halfSize, plateThickness));
+            
+            const planeProps = { mass: 0, material: planeMaterial, collisionFilterGroup: GROUP_WALL, collisionFilterMask: GROUP_PLAYER };
+            
+            const planeYPos = new CANNON.Body(planeProps);
+            planeYPos.addShape(planeShapeY);
+            planeYPos.position.set(0, halfSize, 0);
+            cannonWorld.addBody(planeYPos);
+            planeYPos.addEventListener("collide", () => { isTouching.top = true; });
+            
+            const planeYNeg = new CANNON.Body(planeProps);
+            planeYNeg.addShape(planeShapeY);
+            planeYNeg.position.set(0, -halfSize, 0);
+            cannonWorld.addBody(planeYNeg);
+            planeYNeg.addEventListener("collide", () => { isTouching.bottom = true; });
+
+            const planeXPos = new CANNON.Body(planeProps);
+            planeXPos.addShape(planeShapeX);
+            planeXPos.position.set(halfSize, 0, 0);
+            cannonWorld.addBody(planeXPos);
+            planeXPos.addEventListener("collide", () => { isTouching.right = true; });
+
+            const planeXNeg = new CANNON.Body(planeProps);
+            planeXNeg.addShape(planeShapeX);
+            planeXNeg.position.set(-halfSize, 0, 0);
+            cannonWorld.addBody(planeXNeg);
+            planeXNeg.addEventListener("collide", () => { isTouching.left = true; });
+
+            const planeZPos = new CANNON.Body(planeProps);
+            planeZPos.addShape(planeShapeZ);
+            planeZPos.position.set(0, 0, halfSize);
+            cannonWorld.addBody(planeZPos);
+            planeZPos.addEventListener("collide", () => { isTouching.front = true; });
+
+            const planeZNeg = new CANNON.Body(planeProps);
+            planeZNeg.addShape(planeShapeZ);
+            planeZNeg.position.set(0, 0, -halfSize);
+            cannonWorld.addBody(planeZNeg);
+            planeZNeg.addEventListener("collide", () => { isTouching.back = true; });
+            
+            // Reset flags on endContact for all planes
+            const endContactEvent = () => {
+                // This is less precise than it could be, but simple
+                isTouching.top = false; isTouching.bottom = false;
+                isTouching.left = false; isTouching.right = false;
+                isTouching.front = false; isTouching.back = false;
+            };
+            playerBody.addEventListener("endContact", endContactEvent);
+        }
+
+        // --- NEW SPAWN LOGIC ---
+        function getBlockIdAtGlobal(globalX, globalY, globalZ) {
+            // This function simulates the generation for a single block
+            // It MUST be kept in sync with generateChunkDataCPU
+            const { densityScale, densityThreshold, worldBounds, hollowRadius, biomes, rarityTable } = worldParams;
+            
+            if (Math.abs(globalX) > worldBounds || Math.abs(globalY) > worldBounds || Math.abs(globalZ) > worldBounds) return BLOCK.AIR;
+
+            // Note: This doesn't include worms, but is good enough for a spawn check
+            // const wormMask = carveWorms(chunkX, chunkY, chunkZ, worldParams.numericalSeed + chunkX + chunkY + chunkZ);
+            // if (wormMask[y*CHUNK_SIZE*CHUNK_SIZE + z*CHUNK_SIZE + x] === 1) return BLOCK.AIR;
+
+            let density = noise.density(globalX / densityScale, globalY / densityScale, globalZ / densityScale);
+            
+            if (biomes.has('SKY')) {
+                 density += noise.island(globalX / 40, globalY / 30, globalZ / 40) * 1.5 - 0.75;
+            }
+            
+            let blockID = BLOCK.AIR;
+
+            if (biomes.has('HOLLOW')) {
+                 const dist = Math.sqrt(globalX*globalX + globalY*globalY + globalZ*globalZ);
+                 if (dist < hollowRadius) return BLOCK.AIR;
+                 if (density > densityThreshold) { 
+                   blockID = BLOCK.STONE;
+                 }
+            } else {
+                if (density > densityThreshold) {
+                   blockID = biomes.has('VOLCANIC') ? BLOCK.BASALT : BLOCK.STONE;
+                }
+            }
+
+            if (blockID !== BLOCK.AIR) {
+                 const caveNoise = noise.cave(globalX / 25, globalY / 25, globalZ / 25);
+                 if (caveNoise > 0.65) {
+                     blockID = BLOCK.AIR;
+                 }
+            }
+            return blockID;
+        }
+        
+        function findSafeSpawn(worldBounds) {
+            const AIR_ID = BLOCK.AIR;
+            const WATER_ID = BLOCK.WATER;
+            const LAVA_ID = BLOCK.LAVA;
+            // Scan downwards from the top-center of the world
+            for (let y = Math.floor(worldBounds); y > -worldBounds; y--) {
+                const blockId = getBlockIdAtGlobal(0, y, 0); // Use new, accurate function
+                if (blockId !== AIR_ID && blockId !== WATER_ID && blockId !== LAVA_ID) { // Found solid land!
+                    return { x: 0, y: y + 2, z: 0 }; // Spawn 2 blocks above it.
+                }
+            }
+            // If no land is found (e.g., hollow world), spawn safely on the center box
+            console.warn("No solid ground found at (0,y,0). Spawning at center box.");
+            return { x: 0, y: CENTER_BOX_HALF_SIZE + 2, z: 0 }; // Spawn on top of the center box
+        }
+
+
+        async function startNewWorld(seed, overrides) { // Make async
+            currentSeedString = seed;
+            loader.style.display = 'flex';
+            isWorldReady = false; // Disable animate logic
+
+            controlsOverlay.classList.add('visible');
+            overlayIsVisible = true;
+            isFlying = false;
+
+            for(const chunkId in worldChunks) {
+                if (worldChunks[chunkId].group) scene.remove(worldChunks[chunkId].group);
+                if (worldChunks[chunkId].body) cannonWorld.remove(worldChunks[chunkId].body);
+                worldChunks[chunkId].group?.children.forEach(c => { c.geometry?.dispose(); });
+            }
+            worldChunks = {};
+            lastPlayerChunk = {x: null, y: null, z: null};
+            isTouching = {}; // Reset touching state
+
+            const numericalSeed = createSeedFromString(seed);
+            
+            initBlockRegistry(numericalSeed); // Init block registry
+            noise.density = createNoise3D(seededRandom(numericalSeed + 2));
+            noise.island = createNoise3D(seededRandom(numericalSeed + 3));
+            noise.feature = createNoise2D(seededRandom(numericalSeed + 4));
+            noise.cave = createNoise3D(seededRandom(numericalSeed + 5));
+            noise.waterCave = createNoise3D(seededRandom(numericalSeed + 6));
+            noise.rand = seededRandom(numericalSeed + 7); // For features
+            worldParams = getWorldParams(seed, overrides);
+             worldParams.numericalSeed = numericalSeed; // Store seed for GPU
+             worldParams.rarityTable = buildRarityTable(BigInt(numericalSeed), worldParams.worldBounds); // Use BigInt for seed
+            worldMaterials = generateWorldMaterials(); // Use registry
+
+            scene.background = new THREE.Color(worldParams.biomes.has('VOLCANIC') || worldParams.biomes.has('HOLLOW') ? 0x111827 : 0x87CEEB);
+            scene.fog.color.copy(scene.background);
+            camera.up.set(0,1,0);
+            currentUp.set(0,1,0);
+            pitch = 0;
+            yaw = 0;
+            
+            const spawnPoint = findSafeSpawn(worldParams.worldBounds);
+            playerBody.position.set(spawnPoint.x, spawnPoint.y, spawnPoint.z);
+            playerBody.velocity.set(0,0,0);
+            playerBody.angularVelocity.set(0,0,0); // Reset angular velocity too
+
+            isWorldReady = true; // Enable animate loop to run
+            await updateChunks(); // Await the first chunk load
+        }
+
+        toggleCustomButton.addEventListener('click', () => {
+            customOptions.classList.toggle('hidden');
+            toggleCustomButton.textContent = customOptions.classList.contains('hidden') ? 'Customize World ▼' : 'Customize World ▲';
+        });
+
+        window.keys = {};
+        window.addEventListener('keydown', (e) => {
+            window.keys[e.code] = true;
+            hideOverlayOnce();
+            if (e.code === 'KeyF') {
+                isFlying = !isFlying;
+            }
+            // NEW JUMP LOGIC:
+            if (e.code === 'Space' && !isFlying && canJump) {
+                const upVec = new CANNON.Vec3(currentUp.x, currentUp.y, currentUp.z);
+                const jumpImpulse = upVec.scale(6); // REDUCED JUMP STRENGTH
+                playerBody.velocity.vadd(jumpImpulse, playerBody.velocity);
+                canJump = false; // Prevent double-jump
+            }
+        });
+        window.addEventListener('keyup', (e) => (window.keys[e.code] = false));
+
+        function handleGenerateClick() {
+             let seed = seedInput.value.trim();
+             const overrides = {};
+             if (!seed) {
+                 seed = Math.random().toString(36).substring(2, 10);
+                 seedInput.value = seed;
+                 overrides.worldType = worldTypeSelect.value;
+                 overrides.worldSize = worldSizeSelect.value;
+             }
+             startNewWorld(seed, overrides);
+        }
+
+        generateButton.addEventListener('click', handleGenerateClick);
+        seedInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') handleGenerateClick();
+        });
+
+        // Initialize on window load
+        init().then(() => {
+            startNewWorld('Olympus');
+        }).catch(err => {
+             console.error("Initialization failed:", err);
+             // Display error to user?
+             gpuStatus.textContent = "Error during initialization.";
+        });
+
+    </script>
+</body>
+</html>
+
